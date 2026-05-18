@@ -4,9 +4,9 @@
 
 A lite, educational implementation of the full network switch software stack: from a virtual ASIC forwarding engine, through a hardware SDK, a SAI abstraction layer, up to a SONiC-like NOS. The project demonstrates deep understanding of how open standard network operating systems interact with silicon.
 
-## Target Role
+## Target Stack
 
-Cisco Silicon One — Software Engineer working on SDK development, SAI integration, and open NOS platforms (SONiC, FBOSS).
+SDK development, SAI integration, and open NOS platforms (SONiC, FBOSS).
 
 ---
 
