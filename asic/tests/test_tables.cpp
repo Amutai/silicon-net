@@ -31,6 +31,44 @@ TEST(FdbTable, Remove) {
     ASSERT_TRUE(fdb.remove(mac, 1));
     auto result = fdb.lookup(mac, 1);
     EXPECT_FALSE(result.hit);
+    EXPECT_EQ(fdb.count(), 0);
+}
+
+TEST(FdbTable, RemoveNonExistent) {
+    FdbTable fdb;
+    MacAddr mac = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    EXPECT_FALSE(fdb.remove(mac, 1));
+}
+
+TEST(FdbTable, DuplicateUpdatesPort) {
+    FdbTable fdb;
+    MacAddr mac = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    fdb.add(mac, 1, 3);
+    fdb.add(mac, 1, 5);
+    EXPECT_EQ(fdb.count(), 1);
+    auto result = fdb.lookup(mac, 1);
+    EXPECT_EQ(result.port_id, 5);
+}
+
+TEST(FdbTable, VlanIsolation) {
+    FdbTable fdb;
+    MacAddr mac = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    fdb.add(mac, 1, 3);
+    fdb.add(mac, 2, 5);
+    EXPECT_EQ(fdb.count(), 2);
+    EXPECT_EQ(fdb.lookup(mac, 1).port_id, 3);
+    EXPECT_EQ(fdb.lookup(mac, 2).port_id, 5);
+}
+
+TEST(FdbTable, TableFull) {
+    FdbTable fdb;
+    for (size_t i = 0; i < FDB_TABLE_SIZE; i++) {
+        MacAddr mac = {0, 0, uint8_t(i >> 24), uint8_t(i >> 16), uint8_t(i >> 8), uint8_t(i)};
+        ASSERT_TRUE(fdb.add(mac, 1, 0));
+    }
+    EXPECT_TRUE(fdb.full());
+    MacAddr extra = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    EXPECT_FALSE(fdb.add(extra, 1, 0));
 }
 
 // --- LPM Tests ---
