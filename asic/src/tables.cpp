@@ -8,17 +8,42 @@ namespace asic {
 // --- FDB Table ---
 
 bool FdbTable::add(const MacAddr& mac, uint16_t vlan, uint16_t port) {
-    // TODO: implement
+    if (full()) return false;
+
+    for (auto& entry : entries_) {
+        if (entry.valid && entry.mac == mac && entry.vlan_id == vlan) {
+            entry.port_id = port;
+            return true;
+        }
+    }
+
+    for (auto& entry : entries_) {
+        if (!entry.valid) {
+            entry = {mac, vlan, port, true};
+            count_++;
+            return true;
+        }
+    }
     return false;
 }
 
 bool FdbTable::remove(const MacAddr& mac, uint16_t vlan) {
-    // TODO: implement
+    for (auto& entry : entries_) {
+        if (entry.valid && entry.mac == mac && entry.vlan_id == vlan) {
+            entry.valid = false;
+            count_--;
+            return true;
+        }
+    }
     return false;
 }
 
 FdbLookupResult FdbTable::lookup(const MacAddr& mac, uint16_t vlan) const {
-    // TODO: implement
+    for (const auto& entry : entries_) {
+        if (entry.valid && entry.mac == mac && entry.vlan_id == vlan) {
+            return {true, entry.port_id};
+        }
+    }
     return {false, 0};
 }
 
