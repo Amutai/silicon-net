@@ -97,6 +97,37 @@ TEST(LpmTable, Miss) {
     EXPECT_FALSE(result.hit);
 }
 
+TEST(LpmTable, RemoveRoute) {
+    LpmTable lpm;
+    lpm.add(0x0A000000, 24, 1);
+    ASSERT_TRUE(lpm.remove(0x0A000000, 24));
+    EXPECT_FALSE(lpm.lookup(0x0A000005).hit);
+    EXPECT_EQ(lpm.count(), 0);
+}
+
+TEST(LpmTable, DefaultRoute) {
+    LpmTable lpm;
+    lpm.add(0, 0, 99);  // 0.0.0.0/0 default route
+    auto result = lpm.lookup(0xC0A80101);  // 192.168.1.1
+    EXPECT_TRUE(result.hit);
+    EXPECT_EQ(result.nexthop_id, 99);
+}
+
+TEST(LpmTable, PrefixNormalization) {
+    LpmTable lpm;
+    lpm.add(0x0A000105, 24, 1);  // 10.0.1.5/24 — host bits should be cleared
+    auto result = lpm.lookup(0x0A000100);  // 10.0.1.0
+    EXPECT_TRUE(result.hit);
+}
+
+TEST(LpmTable, DuplicateUpdatesNexthop) {
+    LpmTable lpm;
+    lpm.add(0x0A000000, 24, 1);
+    lpm.add(0x0A000000, 24, 2);
+    EXPECT_EQ(lpm.count(), 1);
+    EXPECT_EQ(lpm.lookup(0x0A000001).nexthop_id, 2);
+}
+
 // --- Next-Hop Tests ---
 
 TEST(NexthopTable, CreateAndLookup) {

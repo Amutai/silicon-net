@@ -53,17 +53,55 @@ bool FdbTable::full() const { return count_ >= FDB_TABLE_SIZE; }
 // --- LPM Table ---
 
 bool LpmTable::add(uint32_t prefix, uint8_t prefix_len, uint32_t nexthop_id) {
-    // TODO: implement
+    if (full() || prefix_len > 32) return false;
+
+    uint32_t mask = prefix_len == 0 ? 0 : ~((1U << (32 - prefix_len)) - 1);
+    prefix &= mask;
+
+    for (auto& entry : entries_) {
+        if (entry.valid && entry.prefix == prefix && entry.prefix_len == prefix_len) {
+            entry.nexthop_id = nexthop_id;
+            return true;
+        }
+    }
+
+    for (auto& entry : entries_) {
+        if (!entry.valid) {
+            entry = {prefix, prefix_len, nexthop_id, true};
+            count_++;
+            return true;
+        }
+    }
     return false;
 }
 
 bool LpmTable::remove(uint32_t prefix, uint8_t prefix_len) {
-    // TODO: implement
+    uint32_t mask = prefix_len == 0 ? 0 : ~((1U << (32 - prefix_len)) - 1);
+    prefix &= mask;
+
+    for (auto& entry : entries_) {
+        if (entry.valid && entry.prefix == prefix && entry.prefix_len == prefix_len) {
+            entry.valid = false;
+            count_--;
+            return true;
+        }
+    }
     return false;
 }
 
 LpmLookupResult LpmTable::lookup(uint32_t dst_ip) const {
-    // TODO: implement longest-prefix-match
+    const LpmEntry* best = nullptr;
+
+    for (const auto& entry : entries_) {
+        if (!entry.valid) continue;
+        uint32_t mask = entry.prefix_len == 0 ? 0 : ~((1U << (32 - entry.prefix_len)) - 1);
+        if ((dst_ip & mask) == entry.prefix) {
+            if (!best || entry.prefix_len > best->prefix_len)
+                best = &entry;
+        }
+    }
+
+    if (best) return {true, best->nexthop_id};
     return {false, 0};
 }
 
