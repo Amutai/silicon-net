@@ -111,23 +111,77 @@ bool LpmTable::full() const { return count_ >= LPM_TABLE_SIZE; }
 // --- Next-Hop Table ---
 
 bool NexthopTable::add(uint32_t id, uint16_t egress_port, const MacAddr& dst_mac) {
-    // TODO: implement
+    if (full()) return false;
+
+    for (auto& entry : entries_) {
+        if (entry.valid && entry.id == id) {
+            entry.egress_port = egress_port;
+            entry.dst_mac_rewrite = dst_mac;
+            return true;
+        }
+    }
+
+    for (auto& entry : entries_) {
+        if (!entry.valid) {
+            entry.id = id;
+            entry.egress_port = egress_port;
+            entry.dst_mac_rewrite = dst_mac;
+            entry.ref_count = 0;
+            entry.valid = true;
+            count_++;
+            return true;
+        }
+    }
     return false;
 }
 
 bool NexthopTable::remove(uint32_t id) {
-    // TODO: implement (check ref_count)
+    for (auto& entry : entries_) {
+        if (entry.valid && entry.id == id) {
+            if (entry.ref_count > 0) return false;
+            entry.valid = false;
+            count_--;
+            return true;
+        }
+    }
     return false;
 }
 
 std::optional<NexthopEntry> NexthopTable::lookup(uint32_t id) const {
-    // TODO: implement
+    for (const auto& entry : entries_) {
+        if (entry.valid && entry.id == id)
+            return entry;
+    }
     return std::nullopt;
 }
 
-bool NexthopTable::increment_ref(uint32_t id) { return false; }
-bool NexthopTable::decrement_ref(uint32_t id) { return false; }
-uint32_t NexthopTable::get_ref_count(uint32_t id) const { return 0; }
+bool NexthopTable::increment_ref(uint32_t id) {
+    for (auto& entry : entries_) {
+        if (entry.valid && entry.id == id) {
+            entry.ref_count++;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool NexthopTable::decrement_ref(uint32_t id) {
+    for (auto& entry : entries_) {
+        if (entry.valid && entry.id == id && entry.ref_count > 0) {
+            entry.ref_count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+uint32_t NexthopTable::get_ref_count(uint32_t id) const {
+    for (const auto& entry : entries_) {
+        if (entry.valid && entry.id == id)
+            return entry.ref_count;
+    }
+    return 0;
+}
 size_t NexthopTable::count() const { return count_; }
 bool NexthopTable::full() const { return count_ >= NEXTHOP_TABLE_SIZE; }
 
