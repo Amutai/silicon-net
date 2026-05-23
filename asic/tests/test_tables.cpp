@@ -149,6 +149,48 @@ TEST(NexthopTable, RefCountPreventsDelete) {
     EXPECT_TRUE(nh.remove(1));   // Now OK
 }
 
+TEST(NexthopTable, LookupMiss) {
+    NexthopTable nh;
+    EXPECT_FALSE(nh.lookup(99).has_value());
+}
+
+TEST(NexthopTable, MultipleRefs) {
+    NexthopTable nh;
+    MacAddr mac = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    nh.add(1, 3, mac);
+    nh.increment_ref(1);
+    nh.increment_ref(1);
+    EXPECT_EQ(nh.get_ref_count(1), 2);
+    nh.decrement_ref(1);
+    EXPECT_FALSE(nh.remove(1));  // Still 1 ref
+    nh.decrement_ref(1);
+    EXPECT_TRUE(nh.remove(1));
+}
+
+TEST(NexthopTable, DecrementAtZeroFails) {
+    NexthopTable nh;
+    MacAddr mac = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    nh.add(1, 3, mac);
+    EXPECT_FALSE(nh.decrement_ref(1));  // Already 0
+}
+
+TEST(NexthopTable, UpdateExisting) {
+    NexthopTable nh;
+    MacAddr mac1 = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+    MacAddr mac2 = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02};
+    nh.add(1, 3, mac1);
+    nh.add(1, 5, mac2);
+    EXPECT_EQ(nh.count(), 1);
+    auto entry = nh.lookup(1);
+    EXPECT_EQ(entry->egress_port, 5);
+    EXPECT_EQ(entry->dst_mac_rewrite, mac2);
+}
+
+TEST(NexthopTable, RemoveNonExistent) {
+    NexthopTable nh;
+    EXPECT_FALSE(nh.remove(99));
+}
+
 // --- ACL Tests ---
 
 TEST(AclTable, DenyRule) {
