@@ -66,6 +66,42 @@ TEST(Pipeline, IngressIncrementsRxCounter) {
     EXPECT_EQ(port->counters.rx_packets, 1);
 }
 
+TEST(Pipeline, L2ForwardOnFdbHit) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+    pipeline.ports().set_admin_state(2, true);
+
+    MacAddr dst = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    pipeline.fdb().add(dst, 1, 2);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.dst_mac = dst;
+    pkt.eth.ethertype = 0x0800;
+
+    auto trace = pipeline.process(pkt);
+    EXPECT_TRUE(trace.fdb_hit);
+    EXPECT_EQ(trace.fdb_port, 2);
+    EXPECT_EQ(pkt.egress_port, 2);
+    EXPECT_FALSE(pkt.has_ipv4);  // L3 skipped
+    EXPECT_FALSE(pkt.dropped);
+}
+
+TEST(Pipeline, DropNonIpv4OnFdbMiss) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.dst_mac = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    pkt.eth.ethertype = 0x0806;  // ARP, not IPv4
+
+    auto trace = pipeline.process(pkt);
+    EXPECT_FALSE(trace.fdb_hit);
+    EXPECT_TRUE(pkt.dropped);
+    EXPECT_STREQ(trace.drop_reason, "no FDB hit and not IPv4");
+}
+
 TEST(Pipeline, AclDenyDropsPacket) {
     Pipeline pipeline;
     pipeline.ports().set_admin_state(0, true);
