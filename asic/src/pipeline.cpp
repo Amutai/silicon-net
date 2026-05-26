@@ -57,7 +57,16 @@ void Pipeline::stage_fdb(Packet& pkt, PipelineTrace& trace) {
 }
 
 void Pipeline::stage_lpm(Packet& pkt, PipelineTrace& trace) {
-    // TODO: L3 longest-prefix-match on dst_ip (only if IPv4)
+    if (!pkt.has_ipv4) return;
+
+    auto result = lpm_.lookup(pkt.ipv4.dst_ip);
+    trace.lpm_hit = result.hit;
+    if (result.hit) {
+        trace.lpm_nexthop_id = result.nexthop_id;
+    } else {
+        pkt.dropped = true;
+        trace.drop_reason = "no route";
+    }
 }
 
 void Pipeline::stage_acl(Packet& pkt, PipelineTrace& trace) {

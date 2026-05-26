@@ -103,6 +103,56 @@ TEST(Pipeline, DropNonIpv4OnFdbMiss) {
     EXPECT_STREQ(trace.drop_reason, "no FDB hit and not IPv4");
 }
 
+TEST(Pipeline, LpmHitSetsNexthop) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+    pipeline.lpm().add(0x0A000200, 24, 42);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.ethertype = 0x0800;
+    pkt.ipv4.dst_ip = 0x0A000205;
+    pkt.ipv4.ttl = 64;
+
+    auto trace = pipeline.process(pkt);
+    EXPECT_TRUE(trace.lpm_hit);
+    EXPECT_EQ(trace.lpm_nexthop_id, 42);
+}
+
+TEST(Pipeline, LpmMissDropsPacket) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.ethertype = 0x0800;
+    pkt.ipv4.dst_ip = 0x0B000001;  // No route for 11.x.x.x
+    pkt.ipv4.ttl = 64;
+
+    auto trace = pipeline.process(pkt);
+    EXPECT_FALSE(trace.lpm_hit);
+    EXPECT_TRUE(pkt.dropped);
+    EXPECT_STREQ(trace.drop_reason, "no route");
+}
+
+TEST(Pipeline, LpmSkippedOnFdbHit) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+    pipeline.ports().set_admin_state(2, true);
+
+    MacAddr dst = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    pipeline.fdb().add(dst, 1, 2);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.dst_mac = dst;
+    pkt.eth.ethertype = 0x0800;
+
+    auto trace = pipeline.process(pkt);
+    EXPECT_TRUE(trace.fdb_hit);
+    EXPECT_FALSE(trace.lpm_hit);  // LPM not consulted
+}
+
 TEST(Pipeline, AclDenyDropsPacket) {
     GTEST_SKIP() << "Requires LPM and ACL stages (#7, #8)";
     Pipeline pipeline;
