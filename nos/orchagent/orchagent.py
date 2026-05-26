@@ -14,7 +14,6 @@ Our simplified version demonstrates the same orchestration logic.
 # TODO: Implement in Milestone 4
 
 import redis
-import json
 
 
 APP_DB = 0   # Redis DB index for application intent

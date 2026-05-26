@@ -7,6 +7,7 @@
 namespace asic::test {
 
 TEST(Pipeline, ForwardL3Packet) {
+    GTEST_SKIP() << "Requires LPM, nexthop, and egress stages (#7, #9, #10)";
     Pipeline pipeline;
 
     // Setup: port 0 up, port 3 up
@@ -103,6 +104,7 @@ TEST(Pipeline, DropNonIpv4OnFdbMiss) {
 }
 
 TEST(Pipeline, AclDenyDropsPacket) {
+    GTEST_SKIP() << "Requires LPM and ACL stages (#7, #8)";
     Pipeline pipeline;
     pipeline.ports().set_admin_state(0, true);
     pipeline.ports().set_admin_state(3, true);

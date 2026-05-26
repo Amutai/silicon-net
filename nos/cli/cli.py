@@ -20,7 +20,6 @@ Commands:
 
 import click
 import redis
-import json
 
 
 APP_DB = 0
