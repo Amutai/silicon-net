@@ -30,7 +30,13 @@ PipelineTrace Pipeline::process(Packet& pkt) {
 }
 
 void Pipeline::stage_ingress(Packet& pkt, PipelineTrace& trace) {
-    // TODO: validate ingress port is up, increment rx counter
+    if (!ports_.is_up(pkt.ingress_port)) {
+        pkt.dropped = true;
+        trace.drop_reason = "ingress port down";
+        ports_.increment_drop(pkt.ingress_port);
+        return;
+    }
+    ports_.increment_rx(pkt.ingress_port);
 }
 
 void Pipeline::stage_fdb(Packet& pkt, PipelineTrace& trace) {
