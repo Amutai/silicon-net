@@ -40,7 +40,20 @@ void Pipeline::stage_ingress(Packet& pkt, PipelineTrace& trace) {
 }
 
 void Pipeline::stage_fdb(Packet& pkt, PipelineTrace& trace) {
-    // TODO: L2 lookup by dst_mac + vlan
+    auto result = fdb_.lookup(pkt.eth.dst_mac, 1);
+    trace.fdb_hit = result.hit;
+    if (result.hit) {
+        trace.fdb_port = result.port_id;
+        pkt.egress_port = result.port_id;
+        return;
+    }
+
+    if (pkt.eth.ethertype != 0x0800) {
+        pkt.dropped = true;
+        trace.drop_reason = "no FDB hit and not IPv4";
+        return;
+    }
+    pkt.has_ipv4 = true;
 }
 
 void Pipeline::stage_lpm(Packet& pkt, PipelineTrace& trace) {
