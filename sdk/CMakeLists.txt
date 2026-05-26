@@ -2,6 +2,7 @@ add_library(sdk
     src/sdk.cpp
 )
 
+set_target_properties(sdk PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(sdk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(sdk PUBLIC asic)
 

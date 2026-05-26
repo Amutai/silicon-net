@@ -14,9 +14,6 @@ Our simplified version demonstrates the same data flow.
 # TODO: Implement in Milestone 4
 
 import redis
-import ctypes
-import json
-from pathlib import Path
 
 
 ASIC_DB = 1  # Redis DB index (SONiC convention)
