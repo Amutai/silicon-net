@@ -47,6 +47,23 @@ TEST(Pipeline, DropOnIngressPortDown) {
 
     auto trace = pipeline.process(pkt);
     EXPECT_FALSE(trace.forwarded);
+    EXPECT_TRUE(pkt.dropped);
+    EXPECT_STREQ(trace.drop_reason, "ingress port down");
+}
+
+TEST(Pipeline, IngressIncrementsRxCounter) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.ethertype = 0x0800;
+    pkt.ipv4.dst_ip = 0x0A000214;
+    pkt.ipv4.ttl = 64;
+
+    pipeline.process(pkt);
+    auto* port = pipeline.ports().get_port(0);
+    EXPECT_EQ(port->counters.rx_packets, 1);
 }
 
 TEST(Pipeline, AclDenyDropsPacket) {
