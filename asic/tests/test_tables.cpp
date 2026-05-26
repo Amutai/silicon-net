@@ -211,8 +211,81 @@ TEST(AclTable, DenyRule) {
 TEST(AclTable, NoMatchPermits) {
     AclTable acl;
     auto result = acl.evaluate(0x0A000001, 0xC0A80101);
-    // No rules → default permit (no match)
     EXPECT_FALSE(result.matched);
+}
+
+TEST(AclTable, PriorityOrdering) {
+    AclTable acl;
+    AclRule deny{};
+    deny.id = 1;
+    deny.priority = 100;
+    deny.src_ip = 0x0A000000;
+    deny.src_ip_mask = 0xFF000000;
+    deny.action = AclAction::DENY;
+    acl.add(deny);
+
+    AclRule permit{};
+    permit.id = 2;
+    permit.priority = 10;  // Higher priority (lower number)
+    permit.src_ip = 0x0A000000;
+    permit.src_ip_mask = 0xFF000000;
+    permit.action = AclAction::PERMIT;
+    acl.add(permit);
+
+    auto result = acl.evaluate(0x0A010203, 0xC0A80101);
+    EXPECT_TRUE(result.matched);
+    EXPECT_EQ(result.action, AclAction::PERMIT);  // Priority 10 wins over 100
+}
+
+TEST(AclTable, RedirectAction) {
+    AclTable acl;
+    AclRule rule{};
+    rule.id = 1;
+    rule.priority = 10;
+    rule.dst_ip = 0xC0A80100;
+    rule.dst_ip_mask = 0xFFFFFF00;
+    rule.action = AclAction::REDIRECT;
+    rule.redirect_port = 7;
+    acl.add(rule);
+
+    auto result = acl.evaluate(0x0A000001, 0xC0A80105);
+    EXPECT_TRUE(result.matched);
+    EXPECT_EQ(result.action, AclAction::REDIRECT);
+    EXPECT_EQ(result.redirect_port, 7);
+}
+
+TEST(AclTable, WildcardMatchesAll) {
+    AclTable acl;
+    AclRule rule{};
+    rule.id = 1;
+    rule.priority = 10;
+    rule.action = AclAction::DENY;  // No masks set = match all
+    acl.add(rule);
+
+    auto result = acl.evaluate(0x01020304, 0x05060708);
+    EXPECT_TRUE(result.matched);
+    EXPECT_EQ(result.action, AclAction::DENY);
+}
+
+TEST(AclTable, RemoveRule) {
+    AclTable acl;
+    AclRule rule{};
+    rule.id = 1;
+    rule.priority = 10;
+    rule.src_ip = 0x0A000000;
+    rule.src_ip_mask = 0xFF000000;
+    rule.action = AclAction::DENY;
+    acl.add(rule);
+
+    ASSERT_TRUE(acl.remove(1));
+    EXPECT_EQ(acl.count(), 0);
+    auto result = acl.evaluate(0x0A000001, 0);
+    EXPECT_FALSE(result.matched);
+}
+
+TEST(AclTable, RemoveNonExistent) {
+    AclTable acl;
+    EXPECT_FALSE(acl.remove(99));
 }
 
 }  // namespace asic::test

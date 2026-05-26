@@ -188,17 +188,52 @@ bool NexthopTable::full() const { return count_ >= NEXTHOP_TABLE_SIZE; }
 // --- ACL Table ---
 
 bool AclTable::add(const AclRule& rule) {
-    // TODO: implement
+    if (full()) return false;
+
+    for (auto& r : rules_) {
+        if (r.valid && r.id == rule.id) {
+            r = rule;
+            r.valid = true;
+            return true;
+        }
+    }
+
+    for (auto& r : rules_) {
+        if (!r.valid) {
+            r = rule;
+            r.valid = true;
+            count_++;
+            return true;
+        }
+    }
     return false;
 }
 
 bool AclTable::remove(uint32_t rule_id) {
-    // TODO: implement
+    for (auto& rule : rules_) {
+        if (rule.valid && rule.id == rule_id) {
+            rule.valid = false;
+            count_--;
+            return true;
+        }
+    }
     return false;
 }
 
 AclResult AclTable::evaluate(uint32_t src_ip, uint32_t dst_ip) const {
-    // TODO: implement priority-ordered evaluation
+    const AclRule* best = nullptr;
+
+    for (const auto& rule : rules_) {
+        if (!rule.valid) continue;
+        if (rule.src_ip_mask != 0 && (src_ip & rule.src_ip_mask) != rule.src_ip)
+            continue;
+        if (rule.dst_ip_mask != 0 && (dst_ip & rule.dst_ip_mask) != rule.dst_ip)
+            continue;
+        if (!best || rule.priority < best->priority)
+            best = &rule;
+    }
+
+    if (best) return {true, best->action, best->redirect_port};
     return {false, AclAction::PERMIT, 0};
 }
 
