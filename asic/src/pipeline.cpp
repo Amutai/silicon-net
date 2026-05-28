@@ -70,7 +70,23 @@ void Pipeline::stage_lpm(Packet& pkt, PipelineTrace& trace) {
 }
 
 void Pipeline::stage_acl(Packet& pkt, PipelineTrace& trace) {
-    // TODO: evaluate ACL rules against packet fields
+    auto result = acl_.evaluate(pkt.ipv4.src_ip, pkt.ipv4.dst_ip);
+    trace.acl_matched = result.matched;
+    trace.acl_action = result.action;
+
+    if (!result.matched) return;
+
+    switch (result.action) {
+        case AclAction::DENY:
+            pkt.dropped = true;
+            trace.drop_reason = "ACL deny";
+            return;
+        case AclAction::REDIRECT:
+            pkt.egress_port = result.redirect_port;
+            return;
+        case AclAction::PERMIT:
+            break;
+    }
 }
 
 void Pipeline::stage_nexthop(Packet& pkt, PipelineTrace& trace) {
