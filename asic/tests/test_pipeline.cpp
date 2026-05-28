@@ -154,7 +154,6 @@ TEST(Pipeline, LpmSkippedOnFdbHit) {
 }
 
 TEST(Pipeline, AclDenyDropsPacket) {
-    GTEST_SKIP() << "Requires LPM and ACL stages (#7, #8)";
     Pipeline pipeline;
     pipeline.ports().set_admin_state(0, true);
     pipeline.ports().set_admin_state(3, true);
@@ -174,13 +173,14 @@ TEST(Pipeline, AclDenyDropsPacket) {
 
     Packet pkt{};
     pkt.ingress_port = 0;
-    pkt.has_ipv4 = true;
+    pkt.eth.ethertype = 0x0800;
     pkt.ipv4.src_ip = 0x0A000110;  // 10.0.1.16 — matches deny rule
     pkt.ipv4.dst_ip = 0x0A000214;
     pkt.ipv4.ttl = 64;
 
     auto trace = pipeline.process(pkt);
     EXPECT_FALSE(trace.forwarded);
+    EXPECT_TRUE(trace.acl_matched);
     EXPECT_EQ(trace.acl_action, AclAction::DENY);
 }
 
