@@ -90,7 +90,26 @@ void Pipeline::stage_acl(Packet& pkt, PipelineTrace& trace) {
 }
 
 void Pipeline::stage_nexthop(Packet& pkt, PipelineTrace& trace) {
-    // TODO: resolve next-hop, rewrite MAC, decrement TTL
+    if (!pkt.has_ipv4 || !trace.lpm_hit) return;
+
+    auto nh = nexthops_.lookup(trace.lpm_nexthop_id);
+    if (!nh) {
+        pkt.dropped = true;
+        trace.drop_reason = "nexthop not found";
+        return;
+    }
+
+    if (pkt.ipv4.ttl <= 1) {
+        pkt.dropped = true;
+        trace.drop_reason = "TTL expired";
+        return;
+    }
+
+    pkt.ipv4.ttl--;
+    pkt.eth.dst_mac = nh->dst_mac_rewrite;
+    pkt.egress_port = nh->egress_port;
+    trace.nexthop_resolved = true;
+    trace.egress_port = nh->egress_port;
 }
 
 void Pipeline::stage_egress(Packet& pkt, PipelineTrace& trace) {

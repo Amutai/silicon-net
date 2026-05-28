@@ -153,8 +153,62 @@ TEST(Pipeline, LpmSkippedOnFdbHit) {
     EXPECT_FALSE(trace.lpm_hit);  // LPM not consulted
 }
 
-TEST(Pipeline, AclDenyDropsPacket) {
+TEST(Pipeline, NexthopResolvesEgressAndMac) {
     Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+    MacAddr nh_mac = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+    pipeline.nexthops().add(1, 4, nh_mac);
+    pipeline.lpm().add(0x0A000200, 24, 1);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.ethertype = 0x0800;
+    pkt.ipv4.dst_ip = 0x0A000205;
+    pkt.ipv4.ttl = 64;
+
+    auto trace = pipeline.process(pkt);
+    EXPECT_TRUE(trace.nexthop_resolved);
+    EXPECT_EQ(trace.egress_port, 4);
+    EXPECT_EQ(pkt.egress_port, 4);
+    EXPECT_EQ(pkt.eth.dst_mac, nh_mac);
+    EXPECT_EQ(pkt.ipv4.ttl, 63);
+}
+
+TEST(Pipeline, NexthopNotFoundDrops) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+    pipeline.lpm().add(0x0A000200, 24, 99);  // nexthop 99 doesn't exist
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.ethertype = 0x0800;
+    pkt.ipv4.dst_ip = 0x0A000205;
+    pkt.ipv4.ttl = 64;
+
+    auto trace = pipeline.process(pkt);
+    EXPECT_TRUE(pkt.dropped);
+    EXPECT_STREQ(trace.drop_reason, "nexthop not found");
+}
+
+TEST(Pipeline, TtlExpiredDrops) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+    MacAddr nh_mac = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+    pipeline.nexthops().add(1, 4, nh_mac);
+    pipeline.lpm().add(0x0A000200, 24, 1);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.ethertype = 0x0800;
+    pkt.ipv4.dst_ip = 0x0A000205;
+    pkt.ipv4.ttl = 1;
+
+    auto trace = pipeline.process(pkt);
+    EXPECT_TRUE(pkt.dropped);
+    EXPECT_STREQ(trace.drop_reason, "TTL expired");
+}
+
+TEST(Pipeline, AclDenyDropsPacket) {    Pipeline pipeline;
     pipeline.ports().set_admin_state(0, true);
     pipeline.ports().set_admin_state(3, true);
 
