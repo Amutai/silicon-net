@@ -237,4 +237,123 @@ TEST(Pipeline, AclDenyDropsPacket) {    Pipeline pipeline;
     EXPECT_EQ(trace.acl_action, AclAction::DENY);
 }
 
+// --- End-to-End Walkthrough Tests ---
+
+TEST(Pipeline, E2E_L2ForwardWithCounters) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+    pipeline.ports().set_admin_state(2, true);
+
+    MacAddr dst = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    pipeline.fdb().add(dst, 1, 2);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.dst_mac = dst;
+    pkt.eth.ethertype = 0x0800;
+
+    auto trace = pipeline.process(pkt);
+
+    EXPECT_TRUE(trace.fdb_hit);
+    EXPECT_TRUE(trace.forwarded);
+    EXPECT_EQ(pkt.egress_port, 2);
+    EXPECT_FALSE(pkt.dropped);
+    EXPECT_EQ(pipeline.ports().get_port(0)->counters.rx_packets, 1);
+    EXPECT_EQ(pipeline.ports().get_port(2)->counters.tx_packets, 1);
+}
+
+TEST(Pipeline, E2E_L3ForwardFullTrace) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+    pipeline.ports().set_admin_state(5, true);
+
+    MacAddr nh_mac = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
+    pipeline.nexthops().add(7, 5, nh_mac);
+    pipeline.lpm().add(0xC0A80100, 24, 7);  // 192.168.1.0/24 -> nhop 7
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.ethertype = 0x0800;
+    pkt.eth.dst_mac = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    pkt.ipv4.src_ip = 0x0A000001;
+    pkt.ipv4.dst_ip = 0xC0A8010A;  // 192.168.1.10
+    pkt.ipv4.ttl = 128;
+
+    auto trace = pipeline.process(pkt);
+
+    EXPECT_FALSE(trace.fdb_hit);
+    EXPECT_TRUE(trace.lpm_hit);
+    EXPECT_EQ(trace.lpm_nexthop_id, 7);
+    EXPECT_FALSE(trace.acl_matched);
+    EXPECT_TRUE(trace.nexthop_resolved);
+    EXPECT_EQ(trace.egress_port, 5);
+    EXPECT_TRUE(trace.forwarded);
+    EXPECT_EQ(trace.drop_reason, nullptr);
+
+    EXPECT_EQ(pkt.eth.dst_mac, nh_mac);
+    EXPECT_EQ(pkt.ipv4.ttl, 127);
+    EXPECT_EQ(pkt.egress_port, 5);
+
+    EXPECT_EQ(pipeline.ports().get_port(0)->counters.rx_packets, 1);
+    EXPECT_EQ(pipeline.ports().get_port(5)->counters.tx_packets, 1);
+}
+
+TEST(Pipeline, E2E_EgressPortDown) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+    // Port 3 intentionally left down (simulate port DOWN)
+
+    MacAddr nh_mac = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+    pipeline.nexthops().add(1, 3, nh_mac);
+    pipeline.lpm().add(0x0A000200, 24, 1);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.ethertype = 0x0800;
+    pkt.ipv4.dst_ip = 0x0A000205;
+    pkt.ipv4.ttl = 64;
+
+    auto trace = pipeline.process(pkt);
+
+    EXPECT_TRUE(pkt.dropped);
+    EXPECT_FALSE(trace.forwarded);
+    EXPECT_STREQ(trace.drop_reason, "egress port down");
+    EXPECT_EQ(pipeline.ports().get_port(0)->counters.rx_packets, 1);
+    EXPECT_EQ(pipeline.ports().get_port(3)->counters.drops, 1);
+}
+
+TEST(Pipeline, E2E_AclDenyWithCounters) {
+    Pipeline pipeline;
+    pipeline.ports().set_admin_state(0, true);
+    pipeline.ports().set_admin_state(3, true);
+
+    MacAddr nh_mac = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+    pipeline.nexthops().add(1, 3, nh_mac);
+    pipeline.lpm().add(0x0A000200, 24, 1);
+
+    AclRule rule{};
+    rule.id = 1;
+    rule.priority = 10;
+    rule.dst_ip = 0x0A000200;
+    rule.dst_ip_mask = 0xFFFFFF00;
+    rule.action = AclAction::DENY;
+    pipeline.acl().add(rule);
+
+    Packet pkt{};
+    pkt.ingress_port = 0;
+    pkt.eth.ethertype = 0x0800;
+    pkt.ipv4.src_ip = 0xC0A80001;
+    pkt.ipv4.dst_ip = 0x0A000205;
+    pkt.ipv4.ttl = 64;
+
+    auto trace = pipeline.process(pkt);
+
+    EXPECT_TRUE(pkt.dropped);
+    EXPECT_FALSE(trace.forwarded);
+    EXPECT_TRUE(trace.acl_matched);
+    EXPECT_EQ(trace.acl_action, AclAction::DENY);
+    EXPECT_EQ(pipeline.ports().get_port(0)->counters.rx_packets, 1);
+    EXPECT_EQ(pipeline.ports().get_port(3)->counters.tx_packets, 0);
+}
+
 }  // namespace asic::test
