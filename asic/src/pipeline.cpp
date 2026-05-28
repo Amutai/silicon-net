@@ -113,7 +113,15 @@ void Pipeline::stage_nexthop(Packet& pkt, PipelineTrace& trace) {
 }
 
 void Pipeline::stage_egress(Packet& pkt, PipelineTrace& trace) {
-    // TODO: validate egress port is up, increment tx counter
+    if (!ports_.is_up(pkt.egress_port)) {
+        pkt.dropped = true;
+        trace.drop_reason = "egress port down";
+        ports_.increment_drop(pkt.egress_port);
+        return;
+    }
+
+    ports_.increment_tx(pkt.egress_port);
+    trace.forwarded = true;
 }
 
 }  // namespace asic
