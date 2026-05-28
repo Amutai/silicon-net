@@ -7,7 +7,6 @@
 namespace asic::test {
 
 TEST(Pipeline, ForwardL3Packet) {
-    GTEST_SKIP() << "Requires LPM, nexthop, and egress stages (#7, #9, #10)";
     Pipeline pipeline;
 
     // Setup: port 0 up, port 3 up
@@ -24,7 +23,7 @@ TEST(Pipeline, ForwardL3Packet) {
     // Create packet: dst_ip = 10.0.2.20
     Packet pkt{};
     pkt.ingress_port = 0;
-    pkt.has_ipv4 = true;
+    pkt.eth.ethertype = 0x0800;
     pkt.ipv4.dst_ip = 0x0A000214;  // 10.0.2.20
     pkt.ipv4.src_ip = 0x0A000110;  // 10.0.1.16
     pkt.ipv4.ttl = 64;
