@@ -75,7 +75,7 @@ python -m pytest tests/
 
 | Layer | Status |
 |-------|--------|
-| Virtual ASIC | 🔲 Not started |
+| Virtual ASIC | ✅ Complete (48 tests) |
 | SDK | 🔲 Not started |
 | SAI | 🔲 Not started |
 | Mini-NOS | 🔲 Not started |
