@@ -22,7 +22,7 @@ jobs:
         run: cmake --build build -j$(nproc)
 
       - name: Test
-        run: cd build && ctest --output-on-failure -R "asic_tests|sdk_tests"
+        run: cd build && ctest --output-on-failure -R "asic_tests|sdk_tests|sai_tests"
 
   lint-python:
     runs-on: ubuntu-latest
