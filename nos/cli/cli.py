@@ -1,28 +1,15 @@
 """
 silicon-net: Mini-NOS CLI
-Simple command interface that writes intent to APP_DB (Redis).
+Command interface that writes intent to APP_DB (Redis).
 
 Usage:
-    python cli.py
-
-Commands:
-    port <id> up|down
-    fdb add <mac> vlan <vlan_id> port <port_id>
-    fdb del <mac> vlan <vlan_id>
-    route add <prefix>/<len> nexthop <ip> port <port_id>
-    route del <prefix>/<len>
-    acl add src-ip <ip>/<mask> action permit|deny
-    show fdb | routes | counters | ports
-    inject-packet port <id> dst-mac <mac> src-ip <ip> dst-ip <ip>
+    python -m nos.cli.cli
 """
-
-# TODO: Implement in Milestone 4
 
 import click
 import redis
 
-
-APP_DB = 0
+from nos.schema import APP_DB, port_table_key, route_table_key, fdb_table_key
 
 
 @click.group()
@@ -30,19 +17,57 @@ APP_DB = 0
 def cli(ctx):
     """silicon-net Mini-NOS CLI"""
     ctx.ensure_object(dict)
-    ctx.obj["redis"] = redis.Redis(host="localhost", port=6379, db=APP_DB)
+    ctx.obj["redis"] = redis.Redis(host="localhost", port=6379, db=APP_DB, decode_responses=True)
 
+
+# --- Port Commands (#36) ---
 
 @cli.command()
 @click.argument("port_id", type=int)
 @click.argument("state", type=click.Choice(["up", "down"]))
 @click.pass_context
 def port(ctx, port_id: int, state: str):
-    """Set port admin state."""
+    """Set port admin state. Example: port 0 up"""
     r = ctx.obj["redis"]
-    r.hset(f"PORT_TABLE:port{port_id}", mapping={"admin_status": state})
+    r.hset(port_table_key(port_id), mapping={"admin_status": state})
     click.echo(f"Port {port_id} → {state}")
 
+
+# --- FDB Commands (#36) ---
+
+@cli.group()
+def fdb():
+    """FDB operations."""
+    pass
+
+
+@fdb.command("add")
+@click.argument("mac")
+@click.option("--vlan", required=True, type=int)
+@click.option("--port", "port_id", required=True, type=int)
+@click.pass_context
+def fdb_add(ctx, mac: str, vlan: int, port_id: int):
+    """Add FDB entry. Example: fdb add 00:11:22:33:44:55 --vlan 1 --port 2"""
+    r = ctx.obj["redis"]
+    r.hset(fdb_table_key(vlan, mac), mapping={
+        "port": f"port{port_id}",
+        "type": "static",
+    })
+    click.echo(f"FDB: {mac} vlan {vlan} → port {port_id}")
+
+
+@fdb.command("del")
+@click.argument("mac")
+@click.option("--vlan", required=True, type=int)
+@click.pass_context
+def fdb_del(ctx, mac: str, vlan: int):
+    """Delete FDB entry."""
+    r = ctx.obj["redis"]
+    r.delete(fdb_table_key(vlan, mac))
+    click.echo(f"FDB: {mac} vlan {vlan} removed")
+
+
+# --- Route Commands (#36) ---
 
 @cli.group()
 def route():
@@ -56,24 +81,26 @@ def route():
 @click.option("--port", "port_id", required=True, type=int)
 @click.pass_context
 def route_add(ctx, prefix: str, nexthop: str, port_id: int):
-    """Add a route. Example: route add 10.0.0.0/24 --nexthop 192.168.1.1 --port 3"""
+    """Add route. Example: route add 10.0.0.0/24 --nexthop 192.168.1.1 --port 3"""
     r = ctx.obj["redis"]
-    r.hset(f"ROUTE_TABLE:{prefix}", mapping={
+    r.hset(route_table_key(prefix), mapping={
         "nexthop": nexthop,
-        "ifname": f"port{port_id}"
+        "ifname": f"port{port_id}",
     })
-    click.echo(f"Route {prefix} → nhop {nexthop} port {port_id}")
+    click.echo(f"Route: {prefix} → nexthop {nexthop} port {port_id}")
 
 
 @route.command("del")
 @click.argument("prefix")
 @click.pass_context
 def route_del(ctx, prefix: str):
-    """Delete a route."""
+    """Delete route."""
     r = ctx.obj["redis"]
-    r.delete(f"ROUTE_TABLE:{prefix}")
-    click.echo(f"Route {prefix} removed")
+    r.delete(route_table_key(prefix))
+    click.echo(f"Route: {prefix} removed")
 
+
+# --- Show Commands (#37) ---
 
 @cli.group()
 def show():
@@ -81,17 +108,60 @@ def show():
     pass
 
 
+@show.command("ports")
+@click.pass_context
+def show_ports(ctx):
+    """Show port states."""
+    r = ctx.obj["redis"]
+    for key in sorted(r.scan_iter("PORT_TABLE:*")):
+        data = r.hgetall(key)
+        name = key.split(":")[1]
+        status = data.get("admin_status", "unknown")
+        click.echo(f"  {name}: {status}")
+
+
 @show.command("routes")
 @click.pass_context
 def show_routes(ctx):
     """Show all routes."""
     r = ctx.obj["redis"]
-    for key in r.scan_iter("ROUTE_TABLE:*"):
+    for key in sorted(r.scan_iter("ROUTE_TABLE:*")):
         data = r.hgetall(key)
-        prefix = key.decode().split(":", 1)[1]
-        nhop = data.get(b"nexthop", b"?").decode()
-        iface = data.get(b"ifname", b"?").decode()
+        prefix = key.split(":", 1)[1]
+        nhop = data.get("nexthop", "?")
+        iface = data.get("ifname", "?")
         click.echo(f"  {prefix} → nexthop={nhop} iface={iface}")
+
+
+@show.command("fdb")
+@click.pass_context
+def show_fdb(ctx):
+    """Show FDB table."""
+    r = ctx.obj["redis"]
+    for key in sorted(r.scan_iter("FDB_TABLE:*")):
+        data = r.hgetall(key)
+        parts = key.split(":")
+        vlan = parts[1]
+        mac = parts[2]
+        port_name = data.get("port", "?")
+        entry_type = data.get("type", "?")
+        click.echo(f"  {mac} {vlan} → {port_name} ({entry_type})")
+
+
+# --- Packet Injection (#38) ---
+
+@cli.command("inject-packet")
+@click.option("--port", "port_id", required=True, type=int)
+@click.option("--dst-mac", default="00:00:00:00:00:00")
+@click.option("--src-ip", default="0.0.0.0")
+@click.option("--dst-ip", required=True)
+@click.option("--ttl", default=64, type=int)
+@click.pass_context
+def inject_packet(ctx, port_id: int, dst_mac: str, src_ip: str, dst_ip: str, ttl: int):
+    """Inject a packet for testing. Example: inject-packet --port 0 --dst-ip 10.0.2.5"""
+    click.echo(f"Injecting packet: port={port_id} dst_mac={dst_mac} "
+               f"src_ip={src_ip} dst_ip={dst_ip} ttl={ttl}")
+    click.echo("(Packet injection requires SAI ctypes binding — see syncd-lite)")
 
 
 if __name__ == "__main__":
