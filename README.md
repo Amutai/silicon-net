@@ -78,7 +78,7 @@ python -m pytest tests/
 | Virtual ASIC | ✅ Complete (48 tests) |
 | SDK | ✅ Complete (19 tests) |
 | SAI | ✅ Complete (7 tests) |
-| Mini-NOS | 🔲 Not started |
+| Mini-NOS | ✅ Complete (6 tests) |
 | Packet tools | 🔲 Not started |
 
 ## Build Order
