@@ -24,8 +24,18 @@ jobs:
       - name: Test
         run: cd build && ctest --output-on-failure -R "asic_tests|sdk_tests|sai_tests"
 
-  lint-python:
+  test-python:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -40,4 +50,4 @@ jobs:
         run: ruff check nos/
 
       - name: Test
-        run: cd nos && python -m pytest tests/ -v
+        run: python -m pytest nos/tests/ -v
