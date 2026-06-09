@@ -87,4 +87,4 @@ See [SPEC.md](SPEC.md) for detailed milestones and [docs/ARCHITECTURE.md](docs/A
 
 ## License
 
-MIT
+MIT  
